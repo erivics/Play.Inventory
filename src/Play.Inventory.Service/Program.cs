@@ -4,6 +4,8 @@ using Play.Inventory.Service;
 using Play.Inventory.Service.Clients;
 using Play.Inventory.Service.Dtos;
 using Play.Inventory.Service.Entities;
+using Polly;
+using Polly.Timeout;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,7 +17,12 @@ builder.Services.AddMongo()
 builder.Services.AddHttpClient<CatalogClient>(client =>
 {
     client.BaseAddress = new Uri("http://localhost:5023");
-});
+})
+.AddTransientHttpErrorPolicy(builder => builder.Or<TimeoutRejectedException>().WaitAndRetryAsync(
+    5,
+    retryAttempt => TimeSpan.FromSeconds(Math.Pow(2,retryAttempt))
+))
+.AddPolicyHandler(Policy.TimeoutAsync<HttpResponseMessage>(1));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
