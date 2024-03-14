@@ -14,13 +14,29 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMongo()
                   .AddMongoRepository<InventoryItem>("inventoryitems");
 
+Random jitterer = new Random();
+
 builder.Services.AddHttpClient<CatalogClient>(client =>
 {
     client.BaseAddress = new Uri("http://localhost:5023");
-})
-.AddTransientHttpErrorPolicy(builder => builder.Or<TimeoutRejectedException>().WaitAndRetryAsync(
+})   
+.AddTransientHttpErrorPolicy(servicebuilder => servicebuilder.Or<TimeoutRejectedException>().WaitAndRetryAsync(
     5,
     retryAttempt => TimeSpan.FromSeconds(Math.Pow(2,retryAttempt))
+                   + TimeSpan.FromMilliseconds(jitterer.Next(0,1000))
+))
+.AddTransientHttpErrorPolicy(servicebuilder => servicebuilder.Or<TimeoutRejectedException>().CircuitBreakerAsync(
+    3,
+    TimeSpan.FromSeconds(15),
+    //This is just to get log of what is happening in the background. is it not ideal for Prod deployment
+    onBreak:(outcome, timespan ) =>
+    {
+        // var serviceProvider = builder.Services.BuildServiceProvider();
+        // serviceProvider.GetService<ILogger<CatalogClient>>()?
+        // .LogWarning($"Opening te circuit for {timespan.TotalSeconds} seconds...");
+    },
+    onReset: () =>{}
+
 ))
 .AddPolicyHandler(Policy.TimeoutAsync<HttpResponseMessage>(1));
 
